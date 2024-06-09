@@ -1,0 +1,10 @@
+## Interface: 11200
+## Title: Twister
+## Notes: Totem Twister
+## X-Category: Interface Enhancements
+## X-Date: 2024-02-18
+## X-Website:
+## Version: 1.0
+## SavedVariablesPerCharacter: TwisterSettings
+
+Twister.lua
