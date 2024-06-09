@@ -82,7 +82,6 @@ end
 
 -- adapted from supermacros
 local function RunBody(text)
-  if type(text) ~= "string" then return end
 	local body = text;
 	local length = strlen(body);
 	for w in string.gfind(body, "[^\n]+") do
