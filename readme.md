@@ -1,15 +1,16 @@
 Twister
 ===
-Addon to twist automatically
+Addon to twist automatically.
 ---
-If you're a sicko thaty enjoys self-torture and being oom this is the addon for you.
+Provides a WF totem tracker icon and a function `TwistIt` to twist with.  
+If you're a sicko thaty enjoys self-torture and being oom this is the addon for you.  
 * Requires [SuperWoW](https://github.com/balakethelock/SuperWoW/)  
 ___
 Use: Wrap a macro with `TwistIt(spellmacro,cast_duration)`
 * Bare: `/run TwistIt("/cast Chain Heal(Rank 1)",2.1)`
 * Roids: `/run TwistIt("/cast [@mouseover] Chain Heal(Rank 1)",2.1)`
 * Clique: `/run TwistIt("/run Clique:CastSpell(\"Chain Heal(Rank 1)\",2.1)`
-* AutoMana+Clique: `/run AutoMana(TwistIt("/run Clique:CastSpell(\"Chain Heal(Rank 1)\",2.1))`
+* AutoMana+Clique: `AutoMana("/run TwistIt(\"/run Clique:CastSpell(\\\"Chain Heal(Rank 1)\\\")\",2.1)")`
 ___
 
 The current settings are:

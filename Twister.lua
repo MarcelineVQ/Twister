@@ -70,7 +70,6 @@ local defaults =
   locked = false,
 }
 
-
 -- adapted from supermacros
 local function RunLine(...)
 	for k=1,arg.n do
