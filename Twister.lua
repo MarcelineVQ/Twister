@@ -203,6 +203,13 @@ local function handleCommands(msg,editbox)
   local args = {};
   for word in string.gfind(msg,'%S+') do table.insert(args,word) end
   if args[1] == "leeway" then
+    local n = tonumber(args[2])
+    if n then
+      TwisterSettings.leeway = n
+      amprint("Leeway set to : "..n)
+    else
+      amprint("Usage: /twister leeway <number>")
+    end
   elseif args[1] == "enabled" or args[1] == "enable" or args[1] == "toggle" then
     TwisterSettings.enabled = not TwisterSettings.enabled
     amprint("Addon enabled: "..showOnOff(TwisterSettings.enabled))
@@ -219,7 +226,7 @@ local function handleCommands(msg,editbox)
     end
     amprint("Indicator frame locked: " .. showOnOff(TwisterSettings.locked,"Locked","Unlocked"))
   else -- make group size color by if you're in a big enough group currently
-    amprint('twisterFrame: Wrap a macro with twisterFrame('..colorize("macro",amcolor.yellow)..') to auto-twist when casting.')
+    amprint('Twister: Wrap a macro with TwistIt('..colorize("macro",amcolor.yellow)..') to auto-twist when casting.')
     amprint('- Addon '..colorize("enable",amcolor.green)..'d [' .. showOnOff(TwisterSettings.enabled) .. ']')
     amprint('- Set '.. colorize("leeway",amcolor.green) .. ' to add to cast time when considering when to drop WF [' .. TwisterSettings.leeway .. ']')
     amprint('- Toggle indicator '.. colorize("lock",amcolor.green) .. ' [' .. showOnOff(TwisterSettings.locked,"Locked","Unlocked") .. ']')
