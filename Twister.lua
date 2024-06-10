@@ -133,11 +133,11 @@ twisterFrame:SetScript("OnUpdate", function ()
   end
 end)
 
-function TwistIt(macro,spell_dur)
+function TwistIt(macro,spell_dur,prio_twist)
   local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
   local wf_ready = wf_dur_rem - (spell_dur + TwisterSettings.leeway) < 0
   local on_gcd = GetSpellCooldown(wf_spell_index,"spell") ~= 0
-  if not on_gcd and TwisterSettings.enabled then
+  if (not on_gcd or prio_twist) and TwisterSettings.enabled then
     if wf_was_last and not wf_ready then
       SpellStopTargeting()
       CastSpellByName("Grace of Air Totem")
