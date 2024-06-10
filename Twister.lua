@@ -175,6 +175,8 @@ local function OnEvent()
     in_combat = false
   elseif event == "PLAYER_REGEN_DISABLED" then
     in_combat = true
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    wf_spell_index = FindSpellIndexByName("Windfury Totem")
   elseif event == "ADDON_LOADED" then
     twisterFrame:UnregisterEvent("ADDON_LOADED")
     if not TwisterSettings
@@ -186,7 +188,6 @@ local function OnEvent()
         end
         TwisterSettings = s
     end
-    wf_spell_index = FindSpellIndexByName("Windfury Totem")
     if TwisterSettings.locked then
       twisterFrame:Hide()
       twisterFrame:EnableMouse(false)
@@ -235,6 +236,7 @@ end
 -- twisterFrame:RegisterEvent("UI_ERROR_MESSAGE")
 twisterFrame:RegisterEvent("UNIT_CASTEVENT")
 twisterFrame:RegisterEvent("ADDON_LOADED")
+twisterFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 twisterFrame:RegisterEvent("UNIT_MODEL_CHANGED")
 twisterFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 twisterFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
