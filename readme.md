@@ -17,10 +17,13 @@ Use: Wrap a macro with `TwistIt(spellmacro,cast_duration,prio_twist)`
 
 This will cast WF and wait the air totem gcd before casting GoA, costing casting time but maximizing GoA uptime.  
 ___
+* `/run Twist()` is also provided to solely drop totems for those who just want one button twisting or are too lazy to press WF+GoA in sequence on their own.  
+___
 
 The current settings are:
 * Toggle the addon being enabled
-* Choose leeway to add to `cast_duration` for how soon to drop WF before expiration, default `0.5`
+* Choose leeway to add to `cast_duration` for how soon to drop WF before expiration, default `0.5`.
+* * Posibly just slightly higher than your ms latency is a good target, experiment.
 * Lock totem timer
 * Reset totem timer position
 

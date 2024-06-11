@@ -37,6 +37,17 @@ local function debug_print(text)
     if DEBUG_MODE == true then DEFAULT_CHAT_FRAME:AddMessage(text) end
 end
 
+local function DisableFrame(frame)
+  if frame then
+      frame:EnableMouse(false)
+
+      frame:SetScript("OnUpdate", nil)
+      frame:SetScript("OnEvent", nil)
+
+      frame:Hide()
+  end
+end
+
 local function FindSpellIndexByName(spellName)
   local i = 1
   while true do
@@ -152,6 +163,21 @@ function TwistIt(macro,spell_dur,prio_twist)
   end
 end
 
+function Twist()
+  local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
+  local wf_ready = wf_dur_rem - TwisterSettings.leeway < 0
+  local on_gcd = GetSpellCooldown(wf_spell_index,"spell") ~= 0
+  if (not on_gcd or prio_twist) and TwisterSettings.enabled then
+    if wf_was_last and not wf_ready then
+      SpellStopTargeting()
+      CastSpellByName("Grace of Air Totem")
+    elseif wf_ready then
+      SpellStopTargeting()
+      CastSpellByName("Windfury Totem")
+    end
+  end
+end
+
 local function OnEvent()
   if event == "UNIT_MODEL_CHANGED" then
     if string.find(UnitName(arg1), "^Windfury Totem") then
@@ -176,6 +202,15 @@ local function OnEvent()
   elseif event == "PLAYER_REGEN_DISABLED" then
     in_combat = true
   elseif event == "PLAYER_ENTERING_WORLD" then
+    local _,engClass = UnitClass("player")
+    if engClass ~= "SHAMAN" then
+      DEFAULT_CHAT_FRAME:AddMessage("|cff00ffffTwister|cffffffff is only useful to the Shaman class, the addon is now set to not load again.|r")
+      DisableAddOn("Twister")
+      SlashCmdList["TWISTER"] = nil
+      twisterFrame:Hide()
+      DisableFrame(twisterFrame)
+    end
+
     wf_spell_index = FindSpellIndexByName("Windfury Totem")
   elseif event == "ADDON_LOADED" then
     twisterFrame:UnregisterEvent("ADDON_LOADED")
