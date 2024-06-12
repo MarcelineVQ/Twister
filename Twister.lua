@@ -1,6 +1,12 @@
 -- Name: twisterFrame
 -- License: LGPL v2.1
 
+-- stop loading addon if no superwow
+if not SetAutoloot then
+  DEFAULT_CHAT_FRAME:AddMessage("[|cff36c948Twister|r requires |cffffd200SuperWoW|r to operate.")
+  return
+end
+
 local DEBUG_MODE = false
 
 local success = true
@@ -70,6 +76,7 @@ local wf_dropped_at = 0
 local wf_was_last = false
 local your_totem = nil
 local in_combat = false
+local extended_totems = false
 
 -- User Options
 local defaults =
@@ -101,6 +108,43 @@ end
 
 -------------------------------------------------
 
+local librange = {}
+
+-- Function to calculate distance between two points in 3D space
+function librange:distance(x1,y1,z1,x2,y2,z2)
+  local dx = x2 - x1
+  local dy = y2 - y1
+  local dz = z2 - z1
+  return math.sqrt(dx^2 + dy^2 + dz^2)
+end
+
+function librange:InRange(unit, range, unit2)
+  -- Determine the source based on the unit2 parameter
+  local source = unit2 or "player"
+
+  -- Early exit if the unit does not exist
+  if not UnitExists(unit) then return nil end
+  if not UnitCanAssist(unit, source) then return nil end
+  if UnitIsCharmed(unit) or UnitIsCharmed(unit2) then return nil end
+
+  local x1, y1, z1 = UnitPosition(source)
+  local x2, y2, z2 = UnitPosition(unit)
+
+  -- Check for Tauren race to adjust range
+  local r = { UnitRace(source),UnitRace(unit) }
+  local raceAdjustment = (r[2] == "TAUREN" or r[4] == "TAUREN") and 5 or 3
+  -- local raceAdjustment = (UnitRace(source) == "Tauren" or UnitRace(unit) == "Tauren") and 5 or 3
+
+  -- Calculate distance and adjust based on race
+  local distance = self:distance(x1, y1, z1, x2, y2, z2)
+  local adjustedDistance = distance - raceAdjustment
+
+  -- Return based on the adjusted distance compared to the given range
+  return adjustedDistance < range and 1 or nil
+end
+
+-------------------------------------------------
+
 local SIZE = 35
 
 local twisterFrame = CreateFrame("Frame","TwisterFrame")
@@ -128,11 +172,22 @@ timerText:SetPoint("LEFT", twisterFrame, "LEFT", 3, 0)
 timerText:SetFont("Fonts\\ARIALN.TTF", SIZE)
 
 local carry = 10
+local stepped_out = false
 twisterFrame:SetScript("OnUpdate", function ()
   local dur = carry - (GetTime() - wf_dropped_at)
-  if dur < 5 and UnitExists(your_totem) then
-      carry = carry + (10 - dur)
+  local in_range = your_totem and UnitExists(your_totem) and librange:InRange(your_totem,extended_totems and 30 or 20)
+  if dur < 5 and in_range and not stepped_out then
+    carry = carry + (10 - dur)
   end
+  if dur < 0 and stepped_out and in_range then
+    stepped_out = false
+    carry = carry + (10 - dur)
+    dur = carry - (GetTime() - wf_dropped_at)
+  end
+  if dur < 5 and not in_range then
+    stepped_out = true
+  end
+
   if dur >= 9.9 then
     timerText:SetText("9.9")
   elseif dur > 0 then
@@ -142,6 +197,13 @@ twisterFrame:SetScript("OnUpdate", function ()
     -- carry = 10
     if not in_combat and TwisterSettings.locked then twisterFrame:Hide() end
   end
+
+  if not in_range and UnitExists(your_totem) then
+    icon:SetVertexColor(1,0,0,0.7)
+  else
+    icon:SetVertexColor(1,1,1,0.7)
+  end
+
 end)
 
 function TwistIt(macro,spell_dur,prio_twist)
@@ -204,7 +266,7 @@ local function OnEvent()
   elseif event == "PLAYER_ENTERING_WORLD" then
     local _,engClass = UnitClass("player")
     if engClass ~= "SHAMAN" then
-      DEFAULT_CHAT_FRAME:AddMessage("|cff00ffffTwister|cffffffff is only useful to the Shaman class, the addon is now set to not load again.|r")
+      DEFAULT_CHAT_FRAME:AddMessage("|cff00ffffTwister|r is only useful to the Shaman class, the addon is now set to not load again.")
       DisableAddOn("Twister")
       SlashCmdList["TWISTER"] = nil
       twisterFrame:Hide()
@@ -212,6 +274,8 @@ local function OnEvent()
     end
 
     wf_spell_index = FindSpellIndexByName("Windfury Totem")
+    _,_,_,_,rank = GetTalentInfo(3,8) -- fetch totem talent
+    extended_totems = rank == 1
   elseif event == "ADDON_LOADED" then
     twisterFrame:UnregisterEvent("ADDON_LOADED")
     if not TwisterSettings
