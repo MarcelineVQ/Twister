@@ -77,6 +77,7 @@ local wf_was_last = false
 local your_totem = nil
 local in_combat = false
 local extended_totems = false
+local player_guid = nil
 
 -- User Options
 local defaults =
@@ -194,7 +195,6 @@ twisterFrame:SetScript("OnUpdate", function ()
     timerText:SetText(format("%.01f", dur))
   else
     timerText:SetText()
-    -- carry = 10
     if not in_combat and TwisterSettings.locked then twisterFrame:Hide() end
   end
 
@@ -229,7 +229,8 @@ function Twist()
   local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
   local wf_ready = wf_dur_rem - TwisterSettings.leeway < 0
   local on_gcd = GetSpellCooldown(wf_spell_index,"spell") ~= 0
-  if (not on_gcd or prio_twist) and TwisterSettings.enabled then
+  -- if (not on_gcd or prio_twist) and TwisterSettings.enabled then, it's a solo twist macro, don't make it need enabled
+  if (not on_gcd or prio_twist) then
     if wf_was_last and not wf_ready then
       SpellStopTargeting()
       CastSpellByName("Grace of Air Totem")
@@ -247,7 +248,7 @@ local function OnEvent()
         your_totem = arg1
       end
     end
-  elseif event == "UNIT_CASTEVENT" and UnitName(arg1) == UnitName("player") then
+  elseif event == "UNIT_CASTEVENT" and arg1 == player_guid then
     local name = SpellInfo(arg4)
     if arg3 == "CAST" and arg2 == nil or arg2 == "" then
       if name == "Windfury Totem" then
@@ -273,6 +274,7 @@ local function OnEvent()
       DisableFrame(twisterFrame)
     end
 
+    _,player_guid = UnitExists("player")
     wf_spell_index = FindSpellIndexByName("Windfury Totem")
     _,_,_,_,rank = GetTalentInfo(3,8) -- fetch totem talent
     extended_totems = rank == 1
@@ -296,6 +298,8 @@ local function OnEvent()
     end
   end
 end
+
+-- add an option to set the toggle the default mode,GoA always or let a cast happen
 
 local function handleCommands(msg,editbox)
   local args = {};
