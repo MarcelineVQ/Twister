@@ -1,0 +1,3 @@
+<Bindings>
+	<Binding name="TOGGLE_KEY" header="TWISTER">Twister_Toggle(true);</Binding>
+</Bindings>

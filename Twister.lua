@@ -2,10 +2,25 @@
 -- License: LGPL v2.1
 
 -- stop loading addon if no superwow
-if not SetAutoloot then
-  DEFAULT_CHAT_FRAME:AddMessage("[|cff36c948Twister|r requires |cffffd200SuperWoW|r to operate.")
+if not (SetAutoloot) then
+  StaticPopupDialogs["NO_SUPERWOW_UNITXP_TWISTER"] = {
+    text = "[|cff36c948Twister|r requires |cffffd200SuperWoW|r to operate.",
+    button1 = TEXT(OKAY),
+    timeout = 0,
+    whileDead = 1,
+    hideOnEscape = 1,
+    showAlert = 1,
+  }
+
+  StaticPopup_Show("NO_SUPERWOW_UNITXP_TWISTER")
   return
 end
+
+BINDING_HEADER_TWISTER = "Twister"
+BINDING_NAME_TOGGLE_KEY = "Toggle automated twisting"
+
+-- TODO:
+-- Allow non-sham to use this to know when they're in WF range at a glance
 
 local DEBUG_MODE = false
 
@@ -43,6 +58,13 @@ local function debug_print(text)
     if DEBUG_MODE == true then DEFAULT_CHAT_FRAME:AddMessage(text) end
 end
 
+local function trim(str)
+  if str == "" or str == nil then return str end
+  local s = string.find(str, "%S*")
+  local e = string.find(str, "%S%s*$")
+  return string.sub(str,s,e) or ""
+end
+
 local function DisableFrame(frame)
   if frame then
       frame:EnableMouse(false)
@@ -54,39 +76,24 @@ local function DisableFrame(frame)
   end
 end
 
-local function FindSpellIndexByName(spellName)
-  local i = 1
-  while true do
-      local sName = GetSpellName(i, "spell")
-      if not sName then
-          break
-      end
-      if sName == spellName then
-          return i
-      end
-      i = i + 1
-  end
-  return nil -- Return nil if the spell is not found
-end
-
-local wf_spell_index = FindSpellIndexByName("Windfury Totem")
-
 -- We need to provide the spell duration to know if we should drop WF first or not
 local wf_dropped_at = 0
 local wf_was_last = false
 local your_totem = nil
-local in_combat = false
 local extended_totems = false
 local player_guid = nil
+local spellstore = {}
+local wf_spell_index = nil
 
 -- User Options
 local defaults =
 {
-  enabled = true,
+  enabled = false,
   -- controls how much sooner you want to drop WF before its duration expires
-  -- experimental results picked 0.5 as the sweet spot
-  leeway = 0.5,
+  leeway = 0.3,
   locked = false,
+  prio_twist = false,
+  indicator_shown = true,
 }
 
 -- adapted from supermacros
@@ -109,45 +116,96 @@ end
 
 -------------------------------------------------
 
-local librange = {}
+local function FetchSpellId(spell,maybe_rank)
+  if not spell or spell == "" then return nil end
+  local name,rank
+  local s,e,name = string.find(spell,"([^(]+)")
+  if s and not maybe_rank then
+    _,_,rank = string.find(string.sub(spell,e), "(Rank %d+)")
+  end
+  rank = maybe_rank or rank
+  name = string.lower(trim(name))
+  rank = rank and string.lower(rank)
+  
+  if not spellstore[name] then return nil end
+  if name and rank and spellstore[name][rank] then
+    return spellstore[name][rank]
+  end
 
--- Function to calculate distance between two points in 3D space
-function librange:distance(x1,y1,z1,x2,y2,z2)
-  local dx = x2 - x1
-  local dy = y2 - y1
-  local dz = z2 - z1
-  return math.sqrt(dx^2 + dy^2 + dz^2)
+  local highest = { rank = 0, id = nil }
+  for rank,index in pairs(spellstore[name]) do
+    local _,_,r = string.find(rank, "rank (%d+)")
+    local r2 = tonumber(r)
+    if r2 and r2 > highest.rank then highest = { rank = r2, id = index} end
+  end
+  return highest.id
 end
 
-function librange:InRange(unit, range, unit2)
-  -- Determine the source based on the unit2 parameter
-  local source = unit2 or "player"
+-- Create a hidden tooltip for scanning
+local tooltip = CreateFrame("GameTooltip", "SpellCastTimeTooltip", UIParent, "GameTooltipTemplate")
+tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+function GetSpellCastTime(spellName, spellRank)
 
-  -- Early exit if the unit does not exist
-  if not UnitExists(unit) then return nil end
-  if not UnitCanAssist(unit, source) then return nil end
-  if UnitIsCharmed(unit) or UnitIsCharmed(unit2) then return nil end
+  -- print(spellName)
+  -- print(spellRank)
+  local id = FetchSpellId(spellName,spellRank)
 
-  local x1, y1, z1 = UnitPosition(source)
-  local x2, y2, z2 = UnitPosition(unit)
+  if not id then return nil end -- idkman
 
-  -- Check for Tauren race to adjust range
-  local r = { UnitRace(source),UnitRace(unit) }
-  local raceAdjustment = (r[2] == "TAUREN" or r[4] == "TAUREN") and 5 or 3
-  -- local raceAdjustment = (UnitRace(source) == "Tauren" or UnitRace(unit) == "Tauren") and 5 or 3
+  tooltip:SetSpell(id, BOOKTYPE_SPELL)
+  local cast_line = getglobal("SpellCastTimeTooltipTextLeft3"):GetText()
+  local _, _, castTime = string.find(cast_line or "", "(%d+%.?%d*)")
+  return tonumber(castTime) or 0
+end
 
-  -- Calculate distance and adjust based on race
-  local distance = self:distance(x1, y1, z1, x2, y2, z2)
-  local adjustedDistance = distance - raceAdjustment
+-------------------------------------------------
 
-  -- Return based on the adjusted distance compared to the given range
-  return adjustedDistance < range and 1 or nil
+local librange2 = {}
+do
+  -- Function to calculate distance between two points in 3D space
+  function librange2:distance(x1,y1,z1,x2,y2,z2)
+    local dx = x2 - x1
+    local dy = y2 - y1
+    local dz = z2 - z1
+    return math.sqrt(dx^2 + dy^2 + dz^2)
+  end
+
+  function librange2:InRange(unit, range, unit2)
+    -- Determine the source based on the unit2 parameter
+    local source = unit2 or "player"
+
+    -- Early exit if the unit does not exist or is trivial
+    if unit == source then return 1 end 
+    if not UnitExists(unit) or not UnitExists(source) then return nil end
+
+    -- determine what distance checker we can use
+    local unitxp,r = pcall(UnitXP, "distanceBetween", source, unit)
+    if unitxp then
+      distance = r
+    elseif SetAutoloot then
+      if not UnitCanAssist(unit, source) then return nil end
+      if UnitIsCharmed(unit) or UnitIsCharmed(unit2) then return nil end
+      local x1, y1, z1 = UnitPosition(source)
+      local x2, y2, z2 = UnitPosition(unit)
+      -- Calculate distance and adjust based on race
+      distance = self:distance(x1, y1, z1, x2, y2, z2)
+    else
+      CheckInteractDistance(unit,4) -- meh
+    end
+
+    -- race doesn't seem to matter for totem auras, use standard model radius, probaly the totem's
+    local adjustedDistance = distance - 1.5
+
+    -- Return based on the adjusted distance compared to the given range
+    return adjustedDistance < range and 1 or nil
+  end
 end
 
 -------------------------------------------------
 
 local SIZE = 35
 
+local twisterTimerFrame = CreateFrame("Frame")
 local twisterFrame = CreateFrame("Frame","TwisterFrame")
 twisterFrame:SetHeight(SIZE)
 twisterFrame:SetWidth(SIZE)
@@ -174,9 +232,10 @@ timerText:SetFont("Fonts\\ARIALN.TTF", SIZE)
 
 local carry = 10
 local stepped_out = false
-twisterFrame:SetScript("OnUpdate", function ()
+twisterTimerFrame:SetScript("OnUpdate", function ()
   local dur = carry - (GetTime() - wf_dropped_at)
-  local in_range = your_totem and UnitExists(your_totem) and librange:InRange(your_totem,extended_totems and 30 or 20)
+  local has_totem = your_totem and UnitExists(your_totem)
+  local in_range = has_totem and librange2:InRange(your_totem,extended_totems and 30 or 20)
   if dur < 5 and in_range and not stepped_out then
     carry = carry + (10 - dur)
   end
@@ -185,7 +244,7 @@ twisterFrame:SetScript("OnUpdate", function ()
     carry = carry + (10 - dur)
     dur = carry - (GetTime() - wf_dropped_at)
   end
-  if dur < 5 and not in_range then
+  if dur < 5 and not in_range and has_totem then
     stepped_out = true
   end
 
@@ -195,50 +254,87 @@ twisterFrame:SetScript("OnUpdate", function ()
     timerText:SetText(format("%.01f", dur))
   else
     timerText:SetText()
-    if not in_combat and TwisterSettings.locked then twisterFrame:Hide() end
+    if not TwisterSettings.in_combat and TwisterSettings.locked then twisterFrame:Hide() end
   end
 
-  if not in_range and UnitExists(your_totem) then
+  if not in_range and has_totem then
     icon:SetVertexColor(1,0,0,0.7)
   else
     icon:SetVertexColor(1,1,1,0.7)
   end
-
 end)
 
-function TwistIt(macro,spell_dur,prio_twist)
+local orig_CastSpellByName = CastSpellByName
+local orig_CastSpell = CastSpell
+
+-- Helper function for Windfury totem logic
+local function handleTotemCasting(spellname, spell_dur)
   local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
   local wf_ready = wf_dur_rem - (spell_dur + TwisterSettings.leeway) < 0
-  local on_gcd = GetSpellCooldown(wf_spell_index,"spell") ~= 0
-  if (not on_gcd or prio_twist) and TwisterSettings.enabled then
+  local on_gcd = GetSpellCooldown(wf_spell_index, BOOKTYPE_SPELL) ~= 0
+
+  if (not on_gcd or TwisterSettings.prio_twist) and TwisterSettings.in_combat then
     if wf_was_last and not wf_ready then
       SpellStopTargeting()
-      CastSpellByName("Grace of Air Totem")
+      orig_CastSpellByName("Grace of Air Totem")
     elseif wf_ready then
       SpellStopTargeting()
-      CastSpellByName("Windfury Totem")
+      orig_CastSpellByName("Windfury Totem")
     else
-      RunBody(macro)  
+      return false -- Signal to cast the original spell
     end
-  else
-    RunBody(macro)
+    return true -- Totem was cast, no need to cast the original spell
   end
+
+  return false -- Signal to cast the original spell
 end
 
-function Twist()
-  local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
-  local wf_ready = wf_dur_rem - TwisterSettings.leeway < 0
-  local on_gcd = GetSpellCooldown(wf_spell_index,"spell") ~= 0
-  -- if (not on_gcd or prio_twist) and TwisterSettings.enabled then, it's a solo twist macro, don't make it need enabled
-  if (not on_gcd or prio_twist) then
-    if wf_was_last and not wf_ready then
-      SpellStopTargeting()
-      CastSpellByName("Grace of Air Totem")
-    elseif wf_ready then
-      SpellStopTargeting()
-      CastSpellByName("Windfury Totem")
-    end
+function Twister_CastSpellByName(spellname,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+  if not TwisterSettings.enabled or string.find(spellname,"Totem$") then
+    orig_CastSpellByName(spellname,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+    return
   end
+
+  local spell_dur = GetSpellCastTime(spellname) or 0
+
+  local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
+  local wf_ready = wf_dur_rem - (spell_dur + TwisterSettings.leeway) < 0
+  local on_gcd = GetSpellCooldown(wf_spell_index,BOOKTYPE_SPELL) ~= 0
+
+  if not handleTotemCasting(spellname,spell_dur) then
+    orig_CastSpellByName(spellname,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+  end
+end
+CastSpellByName = Twister_CastSpellByName
+
+function Twister_CastSpell(bookSpellId,bookType,a3,a4,a5,a6,a7,a8,a9,a10)
+  if not TwisterSettings.enabled or string.find(GetSpellName(bookSpellId,bookType),"Totem$") then
+    orig_CastSpell(bookSpellId,bookType,a3,a4,a5,a6,a7,a8,a9,a10)
+    return
+  end
+
+  local spellname = GetSpellName(bookSpellId,bookType)
+  local spell_dur = GetSpellCastTime(spellname) or 0
+  
+  local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
+  local wf_ready = wf_dur_rem - (spell_dur + TwisterSettings.leeway) < 0
+  local on_gcd = GetSpellCooldown(wf_spell_index,BOOKTYPE_SPELL) ~= 0
+
+  if not handleTotemCasting(spellname,spell_dur) then
+    orig_CastSpell(bookSpellId,bookType,a3,a4,a5,a6,a7,a8,a9,a10)
+  end
+end
+CastSpell = Twister_CastSpell
+
+-- set and restore flags
+function Twist()
+  local ic = TwisterSettings.in_combat
+  local en = TwisterSettings.enabled
+  TwisterSettings.enabled = true
+  TwisterSettings.in_combat = true
+  Twister_CastSpellByName("")
+  TwisterSettings.in_combat = ic
+  TwisterSettings.enabled = en
 end
 
 local function OnEvent()
@@ -255,15 +351,16 @@ local function OnEvent()
         wf_dropped_at = GetTime()
         wf_was_last = true
         carry = 10
-        twisterFrame:Show()
+        if TwisterSettings.indicator_shown then twisterFrame:Show() end
       elseif name == "Grace of Air Totem" then
         wf_was_last = false
       end
     end
   elseif event == "PLAYER_REGEN_ENABLED" then
-    in_combat = false
+    TwisterSettings.in_combat = false
   elseif event == "PLAYER_REGEN_DISABLED" then
-    in_combat = true
+    TwisterSettings.in_combat = true
+    if TwisterSettings.indicator_shown then twisterFrame:Show() end
   elseif event == "PLAYER_ENTERING_WORLD" then
     local _,engClass = UnitClass("player")
     if engClass ~= "SHAMAN" then
@@ -274,10 +371,31 @@ local function OnEvent()
       DisableFrame(twisterFrame)
     end
 
+    if UnitAffectingCombat("player") then TwisterSettings.in_combat = true end
+
+    -- fill spellstore
+    spellstore = {}
+    local i = 1
+    while true do
+      local name, rank, id = GetSpellName(i, BOOKTYPE_SPELL)
+      -- local name,tank,texture,minrange,maxrange = SpellInfo(id) 
+      if not name then
+          break
+      end
+      name = string.lower(name)
+      rank = rank and string.lower(rank) or "none"
+
+      spellstore[name] = spellstore[name] or {}
+      spellstore[name][rank] = i
+
+      i = i + 1
+    end
+
     _,player_guid = UnitExists("player")
-    wf_spell_index = FindSpellIndexByName("Windfury Totem")
+    wf_spell_index = FetchSpellId("Windfury Totem")
     _,_,_,_,rank = GetTalentInfo(3,8) -- fetch totem talent
     extended_totems = rank == 1
+
   elseif event == "ADDON_LOADED" then
     twisterFrame:UnregisterEvent("ADDON_LOADED")
     if not TwisterSettings
@@ -292,14 +410,23 @@ local function OnEvent()
     if TwisterSettings.locked then
       twisterFrame:Hide()
       twisterFrame:EnableMouse(false)
-    else
+    elseif TwisterSettings.indicator_shown then
       twisterFrame:Show()
       twisterFrame:EnableMouse(true)
     end
   end
+  twisterFrame:RegisterEvent("UNIT_CASTEVENT")
+  twisterFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+  twisterFrame:RegisterEvent("UNIT_MODEL_CHANGED")
+  twisterFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+  twisterFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 end
 
--- add an option to set the toggle the default mode,GoA always or let a cast happen
+
+function Twister_Toggle(report)
+  TwisterSettings.enabled = not TwisterSettings.enabled
+  if report then UIErrorsFrame:AddMessage("Twister "..showOnOff(TwisterSettings.enabled,"Enabled","Disabled"), 1.0, 1.0, 0.0) end
+end
 
 local function handleCommands(msg,editbox)
   local args = {};
@@ -312,37 +439,62 @@ local function handleCommands(msg,editbox)
     else
       amprint("Usage: /twister leeway <number>")
     end
-  elseif args[1] == "enabled" or args[1] == "enable" or args[1] == "toggle" then
-    TwisterSettings.enabled = not TwisterSettings.enabled
+  elseif args[1] == "twistprio" or args[1] == "priotwist" then
+    if n then
+      TwisterSettings.prio_twist = not TwisterSettings.prio_twist
+      amprint("Prioritize twisting over casts: " .. showOnOff(TwisterSettings.prio_twist))
+    else
+      amprint("Usage: /twister twistprio")
+    end
+  elseif (args[1] == "enable" or args[1] == "on") or (args[1] == "disable" or args[1] == "off") then
+    if (args[1] == "enable" or args[1] == "on") then
+      TwisterSettings.enabled = true
+    elseif (args[1] == "disable" or args[1] == "off") then
+      TwisterSettings.enabled = false
+    end
     amprint("Addon enabled: "..showOnOff(TwisterSettings.enabled))
+  elseif args[1] == "toggle" then
+    Twister_Toggle(true)
+  elseif args[1] == "pause" or args[1] == "unpause" or args[1] == "resume" then
+    if args[1] == "pause" then
+      TwisterSettings.enabled = false
+    else
+      TwisterSettings.enabled = true
+    end
   elseif args[1] == "reset" then
     twisterFrame:SetPoint("CENTER",UIParent,"CENTER",0,0)
-    amprint("Position reset.")
+    amprint("Indicator position reset.")
+  elseif args[1] == "show" or args[1] == "hide" then
+    TwisterSettings.indicator_shown = not TwisterSettings.indicator_shown
+    if TwisterSettings.indicator_shown then
+      twisterFrame:Show()
+    else
+      twisterFrame:Hide()
+    end
+    amprint("Indicator: "..showOnOff(TwisterSettings.indicator_shown, "Shown", "Hidden"))
   elseif args[1] == "lock" or args[1] == "locked" then
     TwisterSettings.locked = not TwisterSettings.locked
     if TwisterSettings.locked then
       twisterFrame:EnableMouse(false)
-    else
+    elseif TwisterSettings.indicator_shown then
       twisterFrame:EnableMouse(true)
       twisterFrame:Show()
     end
     amprint("Indicator frame locked: " .. showOnOff(TwisterSettings.locked,"Locked","Unlocked"))
-  else -- make group size color by if you're in a big enough group currently
-    amprint('Twister: Wrap a macro with TwistIt('..colorize("macro",amcolor.yellow)..') to auto-twist when casting.')
-    amprint('- Addon '..colorize("enable",amcolor.green)..'d [' .. showOnOff(TwisterSettings.enabled) .. ']')
-    amprint('- Set '.. colorize("leeway",amcolor.green) .. ' to add to cast time when considering when to drop WF [' .. TwisterSettings.leeway .. ']')
+  else
+    amprint('Twister: /twister <option>')
+    amprint(format("- Addon %s/%s/%s [%s]",colorize("enable",amcolor.green),colorize("disable",amcolor.red),colorize("toggle",amcolor.yellow),showOnOff(TwisterSettings.enabled, "Enabled", "Disabled")))
+    amprint('- Toggle '..colorize("priotwist",amcolor.green)..' [' .. showOnOff(TwisterSettings.enabled) .. ']')
+    amprint('- Set '.. colorize("leeway",amcolor.green) .. ' to adjust WF drop time [' .. colorize(TwisterSettings.leeway, amcolor.blizzard) .. ']')
     amprint('- Toggle indicator '.. colorize("lock",amcolor.green) .. ' [' .. showOnOff(TwisterSettings.locked,"Locked","Unlocked") .. ']')
-    amprint('- Indicator position '.. colorize("reset",amcolor.green) .. '.')
+    amprint('- Indicator position '.. colorize("reset",amcolor.green))
+    amprint('- '..colorize("show",amcolor.green).."/"..colorize("hide",amcolor.green)..' indicator [' .. showOnOff(TwisterSettings.locked,"Shown","Hidden") .. ']')
   end
 end
 
+-- TODO extend this tocheck any shaman in party not just player, add partychange event to detect when your shaman has changed. This is to allow this addon to be useful to any melee
 -- twisterFrame:RegisterEvent("UI_ERROR_MESSAGE")
-twisterFrame:RegisterEvent("UNIT_CASTEVENT")
 twisterFrame:RegisterEvent("ADDON_LOADED")
-twisterFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-twisterFrame:RegisterEvent("UNIT_MODEL_CHANGED")
-twisterFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-twisterFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 twisterFrame:SetScript("OnEvent", OnEvent)
   
 SLASH_TWISTER1 = "/twister";
