@@ -1,4 +1,4 @@
-Twister 2.0
+Twister 2.1
 ===
 Addon to twist automatically.  
 ---

@@ -114,15 +114,19 @@ local function RunBody(text)
 	end
 end
 
+local function ParseSpellName(spellname)
+  local s,e,name = string.find(spellname,"([^(]+)")
+  if s then
+    _,_,rank = string.find(string.sub(spellname,e), "(Rank %d+)")
+  end
+  return name,rank
+end
+
 -------------------------------------------------
 
 local function FetchSpellId(spell,maybe_rank)
   if not spell or spell == "" then return nil end
-  local name,rank
-  local s,e,name = string.find(spell,"([^(]+)")
-  if s and not maybe_rank then
-    _,_,rank = string.find(string.sub(spell,e), "(Rank %d+)")
-  end
+  local name,rank = ParseSpellName(spell)
   rank = maybe_rank or rank
   name = string.lower(trim(name))
   rank = rank and string.lower(rank)
@@ -266,6 +270,7 @@ end)
 
 local orig_CastSpellByName = CastSpellByName
 local orig_CastSpell = CastSpell
+local orig_UseAction = UseAction
 
 -- Helper function for Windfury totem logic
 local function handleTotemCasting(spellname, spell_dur)
@@ -289,13 +294,25 @@ local function handleTotemCasting(spellname, spell_dur)
   return false -- Signal to cast the original spell
 end
 
+function Twister_UseAction(action_id,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+	local name,actionType,identifier = GetActionText(action_id);
+	if TwisterSettings.enabled and actionType and actionType == "SPELL" and identifier then
+			name,rank,texture = SpellInfo(identifier)
+      Twister_CastSpellByName(name.."("..rank..")")
+  else
+    orig_UseAction(action_id,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+  end
+end
+UseAction = Twister_UseAction
+
 function Twister_CastSpellByName(spellname,a2,a3,a4,a5,a6,a7,a8,a9,a10)
-  if not TwisterSettings.enabled or string.find(spellname,"Totem$") then
+  local name,rank = ParseSpellName(spellname)
+  if not TwisterSettings.enabled or string.find(name,"Totem$") then
     orig_CastSpellByName(spellname,a2,a3,a4,a5,a6,a7,a8,a9,a10)
     return
   end
 
-  local spell_dur = GetSpellCastTime(spellname) or 0
+  local spell_dur = GetSpellCastTime(spellname,rank) or 0
 
   local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
   local wf_ready = wf_dur_rem - (spell_dur + TwisterSettings.leeway) < 0
@@ -308,13 +325,13 @@ end
 CastSpellByName = Twister_CastSpellByName
 
 function Twister_CastSpell(bookSpellId,bookType,a3,a4,a5,a6,a7,a8,a9,a10)
-  if not TwisterSettings.enabled or string.find(GetSpellName(bookSpellId,bookType),"Totem$") then
+  local spellname,rank = GetSpellName(bookSpellId,bookType)
+  if not TwisterSettings.enabled or string.find(spellname,"Totem$") then
     orig_CastSpell(bookSpellId,bookType,a3,a4,a5,a6,a7,a8,a9,a10)
     return
   end
 
-  local spellname = GetSpellName(bookSpellId,bookType)
-  local spell_dur = GetSpellCastTime(spellname) or 0
+  local spell_dur = GetSpellCastTime(spellname,rank) or 0
   
   local wf_dur_rem = (wf_dropped_at + 10) - GetTime()
   local wf_ready = wf_dur_rem - (spell_dur + TwisterSettings.leeway) < 0
@@ -484,7 +501,7 @@ local function handleCommands(msg,editbox)
   else
     amprint('Twister: /twister <option>')
     amprint(format("- Addon %s/%s/%s [%s]",colorize("enable",amcolor.green),colorize("disable",amcolor.red),colorize("toggle",amcolor.yellow),showOnOff(TwisterSettings.enabled, "Enabled", "Disabled")))
-    amprint('- Toggle '..colorize("priotwist",amcolor.green)..' [' .. showOnOff(TwisterSettings.enabled) .. ']')
+    amprint('- Toggle '..colorize("priotwist",amcolor.green)..' [' .. showOnOff(TwisterSettings.prio_twist) .. ']')
     amprint('- Set '.. colorize("leeway",amcolor.green) .. ' to adjust WF drop time [' .. colorize(TwisterSettings.leeway, amcolor.blizzard) .. ']')
     amprint('- Toggle indicator '.. colorize("lock",amcolor.green) .. ' [' .. showOnOff(TwisterSettings.locked,"Locked","Unlocked") .. ']')
     amprint('- Indicator position '.. colorize("reset",amcolor.green))
