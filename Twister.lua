@@ -307,7 +307,7 @@ UseAction = Twister_UseAction
 
 function Twister_CastSpellByName(spellname,a2,a3,a4,a5,a6,a7,a8,a9,a10)
   local name,rank = ParseSpellName(spellname)
-  if not TwisterSettings.enabled or string.find(name,"Totem$") then
+  if not TwisterSettings.enabled or (name and string.find(name,"Totem$")) then
     orig_CastSpellByName(spellname,a2,a3,a4,a5,a6,a7,a8,a9,a10)
     return
   end
@@ -326,7 +326,7 @@ CastSpellByName = Twister_CastSpellByName
 
 function Twister_CastSpell(bookSpellId,bookType,a3,a4,a5,a6,a7,a8,a9,a10)
   local spellname,rank = GetSpellName(bookSpellId,bookType)
-  if not TwisterSettings.enabled or string.find(spellname,"Totem$") then
+  if not TwisterSettings.enabled or (spellName and string.find(spellname,"Totem$")) then
     orig_CastSpell(bookSpellId,bookType,a3,a4,a5,a6,a7,a8,a9,a10)
     return
   end
