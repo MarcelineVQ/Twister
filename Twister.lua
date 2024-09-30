@@ -90,7 +90,7 @@ local defaults =
 {
   enabled = false,
   -- controls how much sooner you want to drop WF before its duration expires
-  leeway = 0.3,
+  leeway = 0.2,
   locked = false,
   prio_twist = false,
   indicator_shown = true,

@@ -1,10 +1,10 @@
 ## Interface: 11200
-## Title: Twister
+## Title: Twister 2.1.2
 ## Notes: Totem Twister
 ## X-Category: Interface Enhancements
 ## X-Date: 2024-02-18
 ## X-Website:
-## Version: 2.1
+## Version: 2.1.2
 ## SavedVariablesPerCharacter: TwisterSettings
 
 Twister.lua
