@@ -388,7 +388,7 @@ local function OnEvent()
       DisableFrame(twisterFrame)
     end
 
-    if UnitAffectingCombat("player") then TwisterSettings.in_combat = true end
+    TwisterSettings.in_combat = UnitAffectingCombat("player") and true or false
 
     -- fill spellstore
     spellstore = {}

@@ -2,6 +2,9 @@ Twister 2.1
 ===
 Addon to twist automatically.  
 ---
+
+* twow 1.17.2: Addon defunct, totwm twisting was removed for no particular reason beyond devs decided it wasn't fun even though they probably don't even do it.  
+
 Provides a WF totem tracker icon and automated twisting.  
 If you're a sicko thaty enjoys self-torture and being oom this is the addon for you.  
 * Requires [SuperWoW](https://github.com/balakethelock/SuperWoW/)  
